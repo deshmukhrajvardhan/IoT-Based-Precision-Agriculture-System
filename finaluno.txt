@@ -1,0 +1,137 @@
+#include <SoftwareSerial.h>
+#include <avr/sleep.h>
+#include <avr/power.h>
+#include <avr/wdt.h>
+
+#define wlevel1 500
+#define valve_PIN (4)
+#define temp (analogRead(A1)*500)/1023
+#define light analogRead(A0)//node level
+#define water analogRead(A2)//node level
+#define pH analogRead(A3)//computation at pi
+
+volatile int f_wdt=1;
+
+// Watchdog Interrupt Service. This is executed when watchdog timed out.
+
+ISR(WDT_vect)
+{
+  if(f_wdt == 0)
+  {
+    f_wdt=1;
+  }
+  else
+  {
+    Serial.println("WDT Overrun!!!;");
+  }
+}
+// Enters the arduino into sleep mode.
+
+void enterSleep(void)
+{
+  set_sleep_mode(SLEEP_MODE_PWR_DOWN);   /* EDIT: could also use SLEEP_MODE_PWR_SAVE for higher power consumption. */
+  sleep_enable();
+  
+  /* Now enter sleep mode. */
+  sleep_mode();
+  
+  /* The program will continue from here after the WDT timeout*/
+  sleep_disable(); /* First thing to do is disable sleep. */
+  
+  /* Re-enable the peripherals. */
+  power_all_enable();
+}
+
+// Setup for the serial comms and the Watch dog timeout. 
+void frame()
+{  
+  Serial.print(";N2;");
+  Serial.print("T");
+  Serial.print(temp);
+  Serial.print(";L");
+  Serial.print(light);
+  Serial.print(";M");
+  Serial.print(water);
+  Serial.print(";P");
+  Serial.print(pH);
+  Serial.print(";");
+    delay(500);
+}
+
+void setup()
+{
+  Serial.begin(9600);
+  pinMode(valve_PIN,OUTPUT);
+ Serial.println("setup");
+ delay(1000);
+ digitalWrite(valve_PIN,LOW);
+  /*** Setup the WDT ***/
+  
+  /* Clear the reset flag. */
+  MCUSR &= ~(1<<WDRF);
+  
+  /* In order to change WDE or the prescaler, we need to
+   * set WDCE (This will allow updates for 4 clock cycles).
+   */
+  WDTCSR |= (1<<WDCE) | (1<<WDE);
+
+  /* set new watchdog timeout prescaler value */
+  WDTCSR = 1<<WDP0 | 1<<WDP3; /* 8.0 seconds */
+  
+  /* Enable the WD interrupt (note no reset). */
+  WDTCSR |= _BV(WDIE);
+  
+}
+
+//int i,j,k;//ifor 20mins, j for 6 hrs
+int i=0;
+int r;
+char c[9];
+char wlevel[3];
+void loop()
+{
+/* Don't forget to clear the flag. */
+    f_wdt = 0;    
+/* Re-enter sleep mode. */
+    enterSleep();
+//Serial.print(i);    
+//Serial.println(". 8 secs");
+//delay(1000);
+//sleep_watchdog_8sec
+if(i==1)//150
+{
+  frame();
+  //delay(1000);
+  i=0;
+  if((c[0]=Serial.read())==';'){
+  for(r=1;r<8;r++){
+  c[r]=Serial.read();
+  }
+  if(c[1]=='N'&&c[2]=='2')
+  {
+    if(c[4]=='W' && c[5]!='0')
+    {
+      wlevel[0]=c[5];
+      wlevel[1]=c[6];
+      wlevel[2]=c[7];
+      Serial.print("hi");
+      delay(1000);
+       while(water>atoi(wlevel))
+    {
+      Serial.print(atoi(wlevel));
+      digitalWrite(valve_PIN,HIGH);
+    }
+    digitalWrite(valve_PIN,LOW);
+  
+    }
+  }
+ }
+   while(water>wlevel1)
+    {
+      //Serial.print(atoi(wlevel));
+      digitalWrite(valve_PIN,HIGH);
+    }
+    digitalWrite(valve_PIN,LOW);
+}
+  i++;
+}
